@@ -1,5 +1,7 @@
 #! /usr/bin/env python3
 
+import os
+import math
 import cv2
 import dlib
 import numpy as np
@@ -10,6 +12,16 @@ detector = dlib.get_frontal_face_detector()
 # Load the predictor
 # https://github.com/italojs/facial-landmarks-recognition/blob/master/shape_predictor_68_face_landmarks.dat
 predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
+
+
+
+tatoos = list()
+for f in os.listdir('.'):
+    if len(f) > 5 and f[0:5] == 'tatoo':
+        tatoos.append(f)
+print('tatoos: {}'.format(' '.join(tatoos)))
+tp = 0
+tatoo = cv2.imread(tatoos[0], cv2.IMREAD_UNCHANGED)
 
 # read the image
 cap = cv2.VideoCapture(2)
@@ -27,6 +39,13 @@ out = cv2.VideoWriter(
 display_marks = True
 display_eyecolor = True
 display_eyebrowcolor = True
+display_tatoo = True
+
+def next_tatoo():
+    global tp
+    global tatoo
+    tp = (tp+1)%len(tatoos)
+    tatoo = cv2.imread(tatoos[tp], cv2.IMREAD_UNCHANGED)
 
 def color_eye(frame, p1, p2):
     #print('EYE: x1 {} x2 {} y1 {} y2 {}'.format(p1.x, p2.x, p1.y, p2.y))
@@ -57,6 +76,52 @@ def color_eyebrow(frame, ps):
         cv2.drawContours(eb, [c], -1, (50, 100, 200), cv2.FILLED)
     frame[p1y:p2y,p1x:p2x] = eb
 
+def transparentOverlay(src , overlay , pos=(0,0)):
+    """
+    :param src: Input Color Background Image
+    :param overlay: transparent Image (BGRA)
+    :param pos:  position where the image to be blit.
+    :param scale : scale factor of transparent image.
+    :return: Resultant Image
+    """
+    h,w,_ = overlay.shape  # Size of foreground
+    rows,cols,_ = src.shape  # Size of background Image
+    y,x = pos[0],pos[1]    # Position of foreground/overlay image
+    
+    #loop over all pixels and apply the blending equation
+    for i in range(h):
+        for j in range(w):
+            if x+i >= rows or y+j >= cols:
+                continue
+            alpha = float(overlay[i][j][3]/255.0) # read the alpha channel 
+            src[x+i][y+j] = alpha*overlay[i][j][:3]+(1-alpha)*src[x+i][y+j]
+    return src
+
+def rotate_image(image, angle, scale):
+  image_center = tuple(np.array(image.shape[1::-1]) / 2)
+  rot_mat = cv2.getRotationMatrix2D(image_center, angle * 180.0 / 3.14159265, scale)
+  result = cv2.warpAffine(image, rot_mat, image.shape[1::-1], flags=cv2.INTER_LINEAR)
+  return result
+
+def embed_tatoo(frame, l, r):
+    dx = r.x - l.x
+    dy = r.y - l.y
+    angle = math.atan2(dy, dx) # rad
+    dist = math.sqrt(dx*dx+dy*dy)
+    #print('A {}  D {}'.format(angle * 180.0 / 3.14, dist))
+    midx = (r.x + l.x) / 2
+    midy = (r.y + l.y) / 2
+    scale = dist * 1.0 / tatoo.shape[1]
+    rotated = rotate_image(tatoo, -angle, scale)
+    cropy = int((tatoo.shape[0]-tatoo.shape[0]*scale)/2.0)
+    cropx = int((tatoo.shape[1]-tatoo.shape[1]*scale)/2.0)
+    croped = rotated[cropy:-cropy,cropx:-cropx]
+    centerx = midx + math.sin(angle)*dist*1.2
+    centery = midy - math.cos(angle)*dist*1.2
+    embedx = centerx - croped.shape[1]/2.0
+    embedy = centery - croped.shape[0]/2.0
+    transparentOverlay(frame, croped, (int(embedx), int(embedy)))
+
 def augment(frame, landmarks):
     if display_marks:
         for n in range(0, 68):
@@ -74,7 +139,8 @@ def augment(frame, landmarks):
     if display_eyebrowcolor:
         color_eyebrow(frame, [landmarks.part(17), landmarks.part(18), landmarks.part(19), landmarks.part(20), landmarks.part(21)])
         color_eyebrow(frame, [landmarks.part(22), landmarks.part(23), landmarks.part(24), landmarks.part(25), landmarks.part(26)])
-
+    if display_tatoo:
+        embed_tatoo(frame, landmarks.part(39), landmarks.part(42))
 while True:
     _, frame = cap.read()
     # Convert image into grayscale
@@ -106,6 +172,10 @@ while True:
         display_eyecolor = not display_eyecolor
     elif k == 98: # b
         display_eyebrowcolor = not display_eyebrowcolor
+    elif k == 116: # t
+        display_tatoo = not display_tatoo
+    elif k == 9: # tab
+        next_tatoo()
 
 # When everything done, release the video capture and video write objects
 cap.release()
