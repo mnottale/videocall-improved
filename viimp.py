@@ -58,13 +58,20 @@ display_marks = False
 display_eyecolor = False
 display_eyebrowcolor = False
 display_tatoo = False
-display_hearts = True
+display_hearts = False
+display_tornado = False
 
 with open('bubbles/examples/hearts.json', 'r') as f:
     e_hearts = f.read()
-effect = bubbles.particle_effect.ParticleEffect.load_from_dict(json.loads(e_hearts))
-effect_renderer = OpenCVEffectRenderer()
-effect_renderer.register_effect(effect)
+effect_hearts = bubbles.particle_effect.ParticleEffect.load_from_dict(json.loads(e_hearts))
+effect_hearts_renderer = OpenCVEffectRenderer()
+effect_hearts_renderer.register_effect(effect_hearts)
+
+with open('bubbles/examples/tornado.json', 'r') as f:
+    e_tornado = f.read()
+effect_tornado = bubbles.particle_effect.ParticleEffect.load_from_dict(json.loads(e_tornado))
+effect_tornado_renderer = OpenCVEffectRenderer()
+effect_tornado_renderer.register_effect(effect_tornado)
 
 def next_tatoo():
     global tp
@@ -193,13 +200,23 @@ def augment(frame, landmarks):
     if display_tatoo:
         embed_tatoo(frame, landmarks.part(39), landmarks.part(42))
     now = datetime.datetime.now()
-    effect.update((now-last_effect_update).total_seconds())
+    effect_tornado.update((now-last_effect_update).total_seconds())
+    effect_hearts.update((now-last_effect_update).total_seconds())
     last_effect_update = now
     if display_hearts:
         effect_target = np.zeros((200, 200, 4), dtype=np.uint8) # Image.new("RGBA", (200, 200), (0,0,0,0))
-        effect_renderer.render_effect(effect, effect_target)
-        lip = landmarks.part(66)
-        transparentOverlay(frame, effect_target, (lip.x-100, lip.y-200))
+        effect_hearts_renderer.render_effect(effect_hearts, effect_target)
+        el = landmarks.part(37)
+        er = landmarks.part(44)
+        transparentOverlay(frame, effect_target, (el.x-100, el.y-200))
+        transparentOverlay(frame, effect_target, (er.x-100, er.y-200))
+    if display_tornado:
+        effect_target = np.zeros((200, 200, 4), dtype=np.uint8) # Image.new("RGBA", (200, 200), (0,0,0,0))
+        effect_tornado_renderer.render_effect(effect_tornado, effect_target)
+        el = landmarks.part(32)
+        er = landmarks.part(34)
+        transparentOverlay(frame, effect_target, (el.x-100, el.y-200))
+        transparentOverlay(frame, effect_target, (er.x-100, er.y-200))
 
 frame_count = 0
 last_ts = datetime.datetime.now()
@@ -236,10 +253,16 @@ while True:
         display_eyecolor = not display_eyecolor
     elif k == 104: # h
         display_hearts = not display_hearts
+        if display_hearts:
+            list(map(lambda x: x.clear(), effect_hearts.get_emitters()))
     elif k == 98: # b
         display_eyebrowcolor = not display_eyebrowcolor
     elif k == 116: # t
         display_tatoo = not display_tatoo
+    elif k == 110: # n
+        display_tornado = not display_tornado
+        if display_tornado:
+            list(map(lambda x: x.clear(), effect_tornado.get_emitters()))
     elif k == 9: # tab
         next_tatoo()
     frame_count += 1
