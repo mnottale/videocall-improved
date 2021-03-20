@@ -350,6 +350,8 @@ while True:
             bg = cv2.resize(bg, (width, height))
         else:
             bg = background
+        # We mask as foreground the convex hull of a cleaned version of changing
+        # pixels, plus detected faces
         diff = cv2.absdiff(gray, prev_image)
         th = 12
         bmsk = diff > th
@@ -365,23 +367,32 @@ while True:
             hull = cv2.convexHull(c, False)
             cv2.drawContours(msk, [hull], 0, 255, cv2.FILLED)
         for l in landmarks:
-            idxs = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,26,25,24,23,22,21,20,19,18,17]
+            idxs = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
             pts = list()
             for i in idxs:
                 p = l.part(i)
                 pts.append([p.x, p.y])
+            # add symetrical points from top-nose to get the forehead
+            idxs.reverse()
+            mid = l.part(27)
+            for i in idxs:
+                p = l.part(i)
+                nx = mid.x + mid.x - p.x
+                ny = mid.y + mid.y - p.y
+                pts.append([nx, ny])
             ctr = np.array(pts).reshape((-1,1,2)).astype(np.int32)
             cv2.drawContours(msk, [ctr], 0, 255, cv2.FILLED)
         if msk_hist is None:
             msk_hist = msk
         else:
             msk_hist = cv2.max(msk, msk_hist)
-            msk_hist = cv2.subtract(msk_hist, 1)
+            msk_hist = cv2.subtract(msk_hist, 4)
+        bmh = cv2.blur(msk_hist, (15, 15))
         #cv2.imshow(winname='Mask', mat=msk_hist)
         alpha3 = np.zeros(frame.shape, dtype=np.float64)
-        alpha3[:,:,0] = msk_hist / 255.0
-        alpha3[:,:,1] = msk_hist / 255.0
-        alpha3[:,:,2] = msk_hist / 255.0
+        alpha3[:,:,0] = bmh / 255.0
+        alpha3[:,:,1] = bmh / 255.0
+        alpha3[:,:,2] = bmh / 255.0
         frame = frame * alpha3 + bg * (1.0 - alpha3)
         frame = frame.astype(np.uint8)
     prev_image = gray
