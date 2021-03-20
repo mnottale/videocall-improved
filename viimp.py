@@ -90,6 +90,16 @@ def color_eyebrow(frame, ps):
     frame[p1y:p2y,p1x:p2x] = eb
 
 def transparentOverlay(src , overlay , pos=(0,0)):
+    zone=src[pos[1]:pos[1]+overlay.shape[0],pos[0]:pos[0]+overlay.shape[1]]
+    alpha = overlay[:,:,3] / 255.0
+    alpha3 = np.zeros_like(zone)
+    alpha3[:,:,0] = alpha
+    alpha3[:,:,1] = alpha
+    alpha3[:,:,2] = alpha
+    res = zone * (1.0 - alpha3) + overlay[:,:,:3]*alpha3
+    src[pos[1]:pos[1]+overlay.shape[0],pos[0]:pos[0]+overlay.shape[1]] = res
+
+def transparentOverlaySlow(src , overlay , pos=(0,0)):
     """
     :param src: Input Color Background Image
     :param overlay: transparent Image (BGRA)
@@ -107,7 +117,7 @@ def transparentOverlay(src , overlay , pos=(0,0)):
             if x+i >= rows or y+j >= cols:
                 continue
             alpha = float(overlay[i][j][3]/255.0) # read the alpha channel 
-            src[x+i][y+j] = alpha*overlay[i][j][:3]+(1-alpha)*src[x+i][y+j]
+            src[x+i,y+j] = alpha*overlay[i,j,:3]+(1-alpha)*src[x+i,y+j]
     return src
 
 def rotate_image(image, angle, scale):
