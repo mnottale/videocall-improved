@@ -9,6 +9,7 @@ import numpy as np
 import sys
 import argparse
 import datetime
+import random
 
 from PIL import Image
 import bubbles.particle_effect
@@ -21,6 +22,8 @@ parser.add_argument('-n','--no-output', action='store_true', help='disable outpu
 
 args = parser.parse_args()
 
+
+rnd = random.Random()
 
 # Load the detector
 detector = dlib.get_frontal_face_detector()
@@ -61,6 +64,25 @@ display_tatoo = False
 display_hearts = False
 display_tornado = False
 
+overlay = None
+overlay_sequence = None
+overlay_appear_time = None
+overlay_state = None
+
+sequence_turn = [
+    {
+        'duration': 1.0,
+        'effects': {
+                'scale': {'start': 0.1, 'stop': 1.0},
+                'rotation': {'start': 0.0, 'stop': 1440.0},
+        }
+    },
+    {
+        'duration': 5.0,
+        'effects': {'opacity': {'start': 1.0, 'stop': 0.0}},
+    }
+]
+
 with open('bubbles/examples/hearts.json', 'r') as f:
     e_hearts = f.read()
 effect_hearts = bubbles.particle_effect.ParticleEffect.load_from_dict(json.loads(e_hearts))
@@ -72,6 +94,64 @@ with open('bubbles/examples/tornado.json', 'r') as f:
 effect_tornado = bubbles.particle_effect.ParticleEffect.load_from_dict(json.loads(e_tornado))
 effect_tornado_renderer = OpenCVEffectRenderer()
 effect_tornado_renderer.register_effect(effect_tornado)
+
+def init_state():
+    return {
+        'x': 0.5,
+        'y': 0.5,
+        'scale': 1.0,
+        'rotation': 0.0,
+        'opacity': 1.0,
+    }
+
+def next_state(sequence, state, elapsed):
+    t = 0
+    for step in sequence:
+        if t+step['duration'] < elapsed:
+            t += step['duration']
+            for k,v in step['effects'].items():
+                state[k] = v['stop']
+        else:
+            pos = elapsed - t
+            ratio = pos / step['duration']
+            for k,v in step['effects'].items():
+                state[k] = v['start'] * (1.0-ratio) + v['stop'] * ratio
+            return True
+    return False
+
+def apply_state(state, image):
+    if state['scale'] != 1.0 or state['rotation'] != 0.0:
+        image = rotate_image(image, state['rotation'] * 3.1415 / 180.0, state['scale'])
+    if state['opacity'] != 1.0:
+        image[:,:,3] = image[:,:,3] * state['opacity']
+    return image
+
+def start_overlay(idx):
+    global overlay
+    global overlay_sequence
+    global overlay_appear_time
+    global overlay_state
+    choices = list()
+    pfx = '{}-'.format(idx)
+    for f in os.listdir('.'):
+        if len(f) >= len(pfx) and f[0:len(pfx)] == pfx:
+            choices.append(f)
+    pickIdx = rnd.randint(0, len(choices)-1)
+    overlay = cv2.imread(choices[pickIdx], cv2.IMREAD_UNCHANGED)
+    overlay_sequence = sequence_turn
+    overlay_appear_time = datetime.datetime.now()
+    overlay_state = init_state()
+
+def next_overlay():
+    global overlay_sequence
+    global overlay_state
+    global overlay_appear_time
+    global overlay
+    cont = next_state(overlay_sequence, overlay_state, (datetime.datetime.now()-overlay_appear_time).total_seconds())
+    if not cont:
+        overlay = None
+        return None, None, None
+    return apply_state(overlay_state, overlay), overlay_state['x'], overlay_state['y']  
 
 def next_tatoo():
     global tp
@@ -239,6 +319,12 @@ while True:
         landmarks = predictor(image=gray, box=face)
 
         augment(frame, landmarks)
+
+    if overlay is not None:
+        img, x, y = next_overlay()
+        if img is not None:
+            transparentOverlay(frame, img, (int(frame.shape[1] * x-img.shape[1]/2), int(frame.shape[0]*y-img.shape[0]/2)))
+
     # show the image
     cv2.imshow(winname="Face", mat=frame)
     if out is not None:
@@ -265,6 +351,9 @@ while True:
             list(map(lambda x: x.clear(), effect_tornado.get_emitters()))
     elif k == 9: # tab
         next_tatoo()
+    elif k in range(48, 58): # 0-9
+        idx = k - 48
+        start_overlay(idx)
     frame_count += 1
     now = datetime.datetime.now()
     if (now - last_ts).total_seconds() > 5:
