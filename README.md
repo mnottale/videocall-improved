@@ -9,7 +9,7 @@ Requirements
 ------------
 
 v4l2loopback : this is the kernel driver that allows creating fake cameras.
-On Ubuntu it is available as `v4l2loopback-dkms`. You need to pass the option
+On Ubuntu it is available as package `v4l2loopback-dkms`. You need to pass the option
 `exclusive_caps=1` for it to work well with web browsers:
 
     insmod /lib/modules/$(uname -r)/updates/dkms/v4l2loopback.ko exclusive_caps=1 video_nr=4
@@ -19,9 +19,13 @@ Download it and drop it in the project directory.
 
 Python3 modules: opencv, dlib, numpy
 
-Optional: 'tatoos' images in the current directory, with any name prefixed with `tatoo-`
+Optional: 'tatoos' images in the project directory, with any name prefixed by `tatoo-`
 
-Optional: overlay images in the current directory, with names prefixed with `0-` to `9-`
+Optional: overlay images in the project directory, with names prefixed by `0-` to `9-`
+
+Optional: background images in the project directory, with names prefixed by `bg-`
+
+Optional: background videos in the project directory, with names prefixed by `vbg-`
 
 Installing
 ----------
@@ -49,3 +53,6 @@ The following augments are available, toggled by the given key:
     t: display image on the forehead
     <tab>: cycle through availables 'tatoo-' images
     0-9: animate in and out an image at random with prefix 0- to 9-
+    g: enable image background
+    v: enable video background
+    PGDOWN: cycle to next image or video background

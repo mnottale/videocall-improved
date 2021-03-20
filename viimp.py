@@ -41,10 +41,41 @@ print('tatoos: {}'.format(' '.join(tatoos)))
 tp = 0
 tatoo = cv2.imread(tatoos[0], cv2.IMREAD_UNCHANGED)
 
-# read the image
-cap = cv2.VideoCapture(int(args.input))
+bg_imgs = list()
+bg_movs = list()
+for f in os.listdir('.'):
+    if len(f) > 3 and f[0:3] == 'bg-':
+        bg_imgs.append(f)
+    if len(f) > 4 and f[0:4] == 'vbg-':
+        bg_movs.append(f)
+
+background = None
+bg_imgs_pos = 0
+background_mov = None
+bg_movs_pos = 0
+
 width = 640
 height = 480
+
+def next_bg_img():
+    global bg_imgs
+    global bg_imgs_pos
+    global background
+    global width
+    global height
+    bg_imgs_pos = (bg_imgs_pos+1)%len(bg_imgs)
+    background = cv2.imread(bg_imgs[bg_imgs_pos], cv2.IMREAD_COLOR)
+    background = cv2.resize(background, (width, height))
+def next_bg_mov():
+    global background_mov
+    global bg_movs_pos
+    global bg_movs
+    bg_movs_pos = (bg_movs_pos+1)%len(bg_movs)
+    if background_mov is not None:
+        background_mov.release()
+    background_mov = cv2.VideoCapture(bg_movs[bg_movs_pos])
+# read the image
+cap = cv2.VideoCapture(int(args.input))
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 out = None
@@ -54,7 +85,7 @@ if not args.no_output:
         #'appsrc ! videoconvert ! video/x-raw,format=BGRx ! identity drop-allocation=true ! v4l2sink device=/dev/video4 sync=false',
         'appsrc ! videoconvert ! video/x-raw,format=UYVY ! identity drop-allocation=true ! v4l2sink device=/dev/video{} sync=false'.format(args.output),
         #BRONK 'appsrc  ! videoconvert ! jpegenc ! image/jpeg ! v4l2sink device=/dev/video4 sync=false',
-        0, 20, (640, 480))
+        0, 20, (width, height))
 
 display_marks = False
 display_eyecolor = False
@@ -62,6 +93,7 @@ display_eyebrowcolor = False
 display_tatoo = False
 display_hearts = False
 display_tornado = False
+replace_background = False
 
 overlay = None
 overlay_sequence = None
@@ -300,30 +332,68 @@ def augment(frame, landmarks):
 frame_count = 0
 last_ts = datetime.datetime.now()
 last_count = 0
+prev_image = None
+msk_hist = None
 while True:
     _, frame = cap.read()
     # Convert image into grayscale
     gray = cv2.cvtColor(src=frame, code=cv2.COLOR_BGR2GRAY)
-
     # Use detector to find landmarks
     faces = detector(gray)
-
+    landmarks = list()
     for face in faces:
-        x1 = face.left()  # left point
-        y1 = face.top()  # top point
-        x2 = face.right()  # right point
-        y2 = face.bottom()  # bottom point
+        landmarks.append(predictor(image=gray, box=face))
+    # Background handling
+    if replace_background:
+        if background_mov is not None:
+            _, bg = background_mov.read()
+            bg = cv2.resize(bg, (width, height))
+        else:
+            bg = background
+        diff = cv2.absdiff(gray, prev_image)
+        th = 12
+        bmsk = diff > th
+        msk = np.zeros_like(gray)
+        msk[:] = bmsk * 255
+        kernel = np.ones((5,5),np.uint8)
+        msk = cv2.erode(msk, kernel, iterations=1)
 
-        # Create landmark object
-        landmarks = predictor(image=gray, box=face)
+        msk = cv2.dilate(msk, kernel, iterations=10)
+        msk = cv2.erode(msk, kernel, iterations=8)
+        contours, hierarchy = cv2.findContours(msk, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        for c in contours:
+            hull = cv2.convexHull(c, False)
+            cv2.drawContours(msk, [hull], 0, 255, cv2.FILLED)
+        for l in landmarks:
+            idxs = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,26,25,24,23,22,21,20,19,18,17]
+            pts = list()
+            for i in idxs:
+                p = l.part(i)
+                pts.append([p.x, p.y])
+            ctr = np.array(pts).reshape((-1,1,2)).astype(np.int32)
+            cv2.drawContours(msk, [ctr], 0, 255, cv2.FILLED)
+        if msk_hist is None:
+            msk_hist = msk
+        else:
+            msk_hist = cv2.max(msk, msk_hist)
+            msk_hist = cv2.subtract(msk_hist, 1)
+        #cv2.imshow(winname='Mask', mat=msk_hist)
+        alpha3 = np.zeros(frame.shape, dtype=np.float64)
+        alpha3[:,:,0] = msk_hist / 255.0
+        alpha3[:,:,1] = msk_hist / 255.0
+        alpha3[:,:,2] = msk_hist / 255.0
+        frame = frame * alpha3 + bg * (1.0 - alpha3)
+        frame = frame.astype(np.uint8)
+    prev_image = gray
 
-        augment(frame, landmarks)
+
+    for l in landmarks:
+        augment(frame, l)
 
     if overlay is not None:
         img, x, y = next_overlay()
         if img is not None:
             transparentOverlay(frame, img, (int(frame.shape[1] * x-img.shape[1]/2), int(frame.shape[0]*y-img.shape[0]/2)))
-
     # show the image
     cv2.imshow(winname="Face", mat=frame)
     if out is not None:
@@ -332,6 +402,24 @@ while True:
     k = cv2.waitKey(delay=1)
     if k == 27:
         break
+    elif k == 103: # g
+        replace_background = not replace_background
+        if replace_background:
+            next_bg_img()
+        else:
+            background = None
+            if background_mov is not None:
+                background_mov.release()
+            background_mov = None
+    elif k == 118: # v
+        replace_background = not replace_background
+        if replace_background:
+            next_bg_mov()
+        else:
+            background = None
+            if background_mov is not None:
+                background_mov.release()
+            background_mov = None
     elif k == 100: # d
         display_marks = not display_marks
     elif k == 101: # e
@@ -353,6 +441,11 @@ while True:
     elif k in range(48, 58): # 0-9
         idx = k - 48
         start_overlay(idx)
+    elif k == 86: # pgdown
+        if background is not None:
+            next_bg_img()
+        elif background_mov is not None:
+            next_bg_mov()
     frame_count += 1
     now = datetime.datetime.now()
     if (now - last_ts).total_seconds() > 5:
