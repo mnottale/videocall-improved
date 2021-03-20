@@ -5,6 +5,17 @@ import math
 import cv2
 import dlib
 import numpy as np
+import sys
+import argparse
+import datetime
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-i', '--input', help='input device number')
+parser.add_argument('-o', '--output', help='output device number')
+parser.add_argument('-n','--no-output', action='store_true', help='disable output')
+
+args = parser.parse_args()
+
 
 # Load the detector
 detector = dlib.get_frontal_face_detector()
@@ -24,17 +35,19 @@ tp = 0
 tatoo = cv2.imread(tatoos[0], cv2.IMREAD_UNCHANGED)
 
 # read the image
-cap = cv2.VideoCapture(2)
+cap = cv2.VideoCapture(int(args.input))
 width = 640
 height = 480
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-out = cv2.VideoWriter(
-    #'appsrc ! videoconvert ! v4l2sink device=/dev/video4',
-    #'appsrc ! videoconvert ! video/x-raw,format=BGRx ! identity drop-allocation=true ! v4l2sink device=/dev/video4 sync=false',
-    'appsrc ! videoconvert ! video/x-raw,format=UYVY ! identity drop-allocation=true ! v4l2sink device=/dev/video4 sync=false',
-    #BRONK 'appsrc  ! videoconvert ! jpegenc ! image/jpeg ! v4l2sink device=/dev/video4 sync=false',
-    0, 20, (640, 480))
+out = None
+if not args.no_output:
+    out = cv2.VideoWriter(
+        #'appsrc ! videoconvert ! v4l2sink device=/dev/video4',
+        #'appsrc ! videoconvert ! video/x-raw,format=BGRx ! identity drop-allocation=true ! v4l2sink device=/dev/video4 sync=false',
+        'appsrc ! videoconvert ! video/x-raw,format=UYVY ! identity drop-allocation=true ! v4l2sink device=/dev/video{} sync=false'.format(args.output),
+        #BRONK 'appsrc  ! videoconvert ! jpegenc ! image/jpeg ! v4l2sink device=/dev/video4 sync=false',
+        0, 20, (640, 480))
 
 display_marks = True
 display_eyecolor = True
@@ -141,6 +154,9 @@ def augment(frame, landmarks):
         color_eyebrow(frame, [landmarks.part(22), landmarks.part(23), landmarks.part(24), landmarks.part(25), landmarks.part(26)])
     if display_tatoo:
         embed_tatoo(frame, landmarks.part(39), landmarks.part(42))
+frame_count = 0
+last_ts = datetime.datetime.now()
+last_count = 0
 while True:
     _, frame = cap.read()
     # Convert image into grayscale
@@ -161,7 +177,8 @@ while True:
         augment(frame, landmarks)
     # show the image
     cv2.imshow(winname="Face", mat=frame)
-    out.write(frame)
+    if out is not None:
+        out.write(frame)
     # Exit when escape is pressed
     k = cv2.waitKey(delay=1)
     if k == 27:
@@ -176,6 +193,12 @@ while True:
         display_tatoo = not display_tatoo
     elif k == 9: # tab
         next_tatoo()
+    frame_count += 1
+    now = datetime.datetime.now()
+    if (now - last_ts).total_seconds() > 5:
+        print("FPS: {}".format((frame_count - last_count) / (now-last_ts).total_seconds()))
+        last_ts = now
+        last_count = frame_count
 
 # When everything done, release the video capture and video write objects
 cap.release()
