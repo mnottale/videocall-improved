@@ -2,12 +2,17 @@
 
 import os
 import math
+import json
 import cv2
 import dlib
 import numpy as np
 import sys
 import argparse
 import datetime
+
+from PIL import Image
+import bubbles.particle_effect
+from bubbles.renderers.opencv_effect_renderer import OpenCVEffectRenderer
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--input', help='input device number')
@@ -49,10 +54,17 @@ if not args.no_output:
         #BRONK 'appsrc  ! videoconvert ! jpegenc ! image/jpeg ! v4l2sink device=/dev/video4 sync=false',
         0, 20, (640, 480))
 
-display_marks = True
-display_eyecolor = True
-display_eyebrowcolor = True
-display_tatoo = True
+display_marks = False
+display_eyecolor = False
+display_eyebrowcolor = False
+display_tatoo = False
+display_hearts = True
+
+with open('bubbles/examples/hearts.json', 'r') as f:
+    e_hearts = f.read()
+effect = bubbles.particle_effect.ParticleEffect.load_from_dict(json.loads(e_hearts))
+effect_renderer = OpenCVEffectRenderer()
+effect_renderer.register_effect(effect)
 
 def next_tatoo():
     global tp
@@ -90,9 +102,23 @@ def color_eyebrow(frame, ps):
     frame[p1y:p2y,p1x:p2x] = eb
 
 def transparentOverlay(src , overlay , pos=(0,0)):
+    #print("p {}  os {}  ss {}".format(pos, overlay.shape, src.shape))
+    if pos[0] >= src.shape[1] or pos[1] >= src.shape[0] or pos[0]+overlay.shape[1] <= 0 or pos[1]+overlay.shape[0] <= 0:
+        return
+    # crop check
+    if pos[0] + overlay.shape[1] >= src.shape[1]:
+        overlay = overlay[:,:src.shape[1]-pos[0], :]
+    if pos[1] + overlay.shape[0] >= src.shape[0]:
+        overlay = overlay[:src.shape[0]-pos[1],:,:]
+    if pos[0] < 0:
+        overlay = overlay[-pos[0]:,:,:]
+        pos = (0, pos[1])
+    if pos[1] < 0:
+        overlay = overlay[:,-pos[1]:,:]
+        pos = (pos[0], 0)
     zone=src[pos[1]:pos[1]+overlay.shape[0],pos[0]:pos[0]+overlay.shape[1]]
     alpha = overlay[:,:,3] / 255.0
-    alpha3 = np.zeros_like(zone)
+    alpha3 = np.zeros(zone.shape, dtype=np.float64)
     alpha3[:,:,0] = alpha
     alpha3[:,:,1] = alpha
     alpha3[:,:,2] = alpha
@@ -145,7 +171,9 @@ def embed_tatoo(frame, l, r):
     embedy = centery - croped.shape[0]/2.0
     transparentOverlay(frame, croped, (int(embedx), int(embedy)))
 
+last_effect_update = datetime.datetime.now()
 def augment(frame, landmarks):
+    global last_effect_update
     if display_marks:
         for n in range(0, 68):
             x = landmarks.part(n).x
@@ -164,6 +192,15 @@ def augment(frame, landmarks):
         color_eyebrow(frame, [landmarks.part(22), landmarks.part(23), landmarks.part(24), landmarks.part(25), landmarks.part(26)])
     if display_tatoo:
         embed_tatoo(frame, landmarks.part(39), landmarks.part(42))
+    now = datetime.datetime.now()
+    effect.update((now-last_effect_update).total_seconds())
+    last_effect_update = now
+    if display_hearts:
+        effect_target = np.zeros((200, 200, 4), dtype=np.uint8) # Image.new("RGBA", (200, 200), (0,0,0,0))
+        effect_renderer.render_effect(effect, effect_target)
+        lip = landmarks.part(66)
+        transparentOverlay(frame, effect_target, (lip.x-100, lip.y-200))
+
 frame_count = 0
 last_ts = datetime.datetime.now()
 last_count = 0
@@ -197,6 +234,8 @@ while True:
         display_marks = not display_marks
     elif k == 101: # e
         display_eyecolor = not display_eyecolor
+    elif k == 104: # h
+        display_hearts = not display_hearts
     elif k == 98: # b
         display_eyebrowcolor = not display_eyebrowcolor
     elif k == 116: # t

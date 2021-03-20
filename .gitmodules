@@ -1,0 +1,3 @@
+[submodule "bubbles"]
+	path = bubbles
+	url = https://github.com/jaynewey/bubbles.git
