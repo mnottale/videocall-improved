@@ -1,7 +1,7 @@
-Video conferencing improved
-===========================
+Video conferencing improved for Linux
+=====================================
 
-This projects enable you to overlay fun stuff onto your webcam video stream to
+This project enables you to overlay fun stuff onto your webcam video stream to
 make those video calls less boring.
 
 
@@ -9,7 +9,7 @@ Requirements
 ------------
 
 v4l2loopback : this is the kernel driver that allows creating fake cameras.
-On ubuntu it is available as `v4l2loopback-dkms`. You need to pass the option
+On Ubuntu it is available as `v4l2loopback-dkms`. You need to pass the option
 `exclusive_caps=1` for it to work well with web browsers:
 
     insmod /lib/modules/$(uname -r)/updates/dkms/v4l2loopback.ko exclusive_caps=1 video_nr=4
@@ -33,6 +33,8 @@ Running
 -------
 
     PYTHONPATH=bubbles: ./viimp.py -i <INPUT_CAMERA_NUMBER> -o 4
+
+You can use `v4l2-ctl --list-devices` to figure out the device number of your webcam.
 
 This will create a preview window on which you can type keys to enable/disable
 augments.
