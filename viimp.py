@@ -11,7 +11,6 @@ import argparse
 import datetime
 import random
 
-from PIL import Image
 import bubbles.particle_effect
 from bubbles.renderers.opencv_effect_renderer import OpenCVEffectRenderer
 
