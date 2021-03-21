@@ -52,6 +52,7 @@ The following augments are available, toggled by the given key:
     d: debug view of face tracker landmark points
     t: display image on the forehead
     <tab>: cycle through availables 'tatoo-' images
+    o: big eye O_o
     0-9: animate in and out an image at random with prefix 0- to 9-
     g: enable image background
     v: enable video background

@@ -93,7 +93,10 @@ display_eyebrowcolor = False
 display_tatoo = False
 display_hearts = False
 display_tornado = False
+display_bigeye = False
 replace_background = False
+
+bigeye_start = 0
 
 overlay = None
 overlay_sequence = None
@@ -270,6 +273,31 @@ def rotate_image(image, angle, scale):
   result = cv2.warpAffine(image, rot_mat, image.shape[1::-1], flags=cv2.INTER_LINEAR)
   return result
 
+def remap(image, point, distance):
+    point = (int(point[0]), int(point[1]))
+    hd = int(distance)
+    x1 = max(0, point[0]-hd)
+    x2 = min(image.shape[1]-1, point[0]+hd)
+    y1 = max(0, point[1]-hd)
+    y2 = min(image.shape[0]-1, point[1]+hd)
+    zone = image[y1:y2,x1:x2]
+    point = (point[0]-x1, point[1]-y1)
+    mx = np.zeros((zone.shape[0], zone.shape[1]), dtype=np.float32)
+    my = np.zeros((zone.shape[0], zone.shape[1]), dtype=np.float32)
+    for y in range(zone.shape[0]):
+        for x in range(zone.shape[1]):
+            d = math.sqrt((point[0]-x)*(point[0]-x)+(point[1]-y)*(point[1]-y))
+            if d > distance:
+                mx[y,x] = x
+                my[y,x] = y
+            else:
+                factor =  1.0 - math.log(d/distance + 1)/math.log(2)
+                mx[y,x] = x + (point[0]-x)*factor
+                my[y,x] = y + (point[1]-y)*factor
+    zone = cv2.remap(zone, mx, my, cv2.INTER_LINEAR)
+    image[y1:y2,x1:x2] = zone
+    return image
+
 def embed_tatoo(frame, l, r):
     dx = r.x - l.x
     dy = r.y - l.y
@@ -292,6 +320,8 @@ def embed_tatoo(frame, l, r):
 last_effect_update = datetime.datetime.now()
 def augment(frame, landmarks):
     global last_effect_update
+    global frame_count
+    global bigeye_start
     if display_marks:
         for n in range(0, 68):
             x = landmarks.part(n).x
@@ -305,6 +335,10 @@ def augment(frame, landmarks):
         er2 = landmarks.part(46)
         color_eye(frame, el1, el2)
         color_eye(frame, er1, er2)
+    if display_bigeye:
+        p1 = landmarks.part(37)
+        p2 = landmarks.part(40)
+        frame = remap(frame, ((p1.x+p2.x)/2, (p1.y+p2.y)/2), 10 + min((frame_count-bigeye_start)*2,100))
     if display_eyebrowcolor:
         color_eyebrow(frame, [landmarks.part(17), landmarks.part(18), landmarks.part(19), landmarks.part(20), landmarks.part(21)])
         color_eyebrow(frame, [landmarks.part(22), landmarks.part(23), landmarks.part(24), landmarks.part(25), landmarks.part(26)])
@@ -328,6 +362,7 @@ def augment(frame, landmarks):
         er = landmarks.part(34)
         transparentOverlay(frame, effect_target, (el.x-100, el.y-200))
         transparentOverlay(frame, effect_target, (er.x-100, er.y-200))
+    return frame
 
 frame_count = 0
 last_ts = datetime.datetime.now()
@@ -373,7 +408,6 @@ while True:
                 p = l.part(i)
                 pts.append([p.x, p.y])
             # add symetrical points from top-nose to get the forehead
-            idxs.reverse()
             mid = l.part(27)
             for i in idxs:
                 p = l.part(i)
@@ -399,7 +433,7 @@ while True:
 
 
     for l in landmarks:
-        augment(frame, l)
+        frame = augment(frame, l)
 
     if overlay is not None:
         img, x, y = next_overlay()
@@ -447,6 +481,10 @@ while True:
         display_tornado = not display_tornado
         if display_tornado:
             list(map(lambda x: x.clear(), effect_tornado.get_emitters()))
+    elif k == 111: # o
+        display_bigeye = not display_bigeye
+        if display_bigeye:
+            bigeye_start = frame_count
     elif k == 9: # tab
         next_tatoo()
     elif k in range(48, 58): # 0-9
