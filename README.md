@@ -50,6 +50,7 @@ The following augments are available, toggled by the given key:
     e: blue eyes
     b: orange eyebrows (not working that well...)
     d: debug view of face tracker landmark points
+    l: lightning from the eyes
     t: display image on the forehead
     <tab>: cycle through availables 'tatoo-' images
     o: big eye O_o

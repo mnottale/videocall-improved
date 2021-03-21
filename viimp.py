@@ -94,6 +94,7 @@ display_tatoo = False
 display_hearts = False
 display_tornado = False
 display_bigeye = False
+display_lightning = False
 replace_background = False
 
 bigeye_start = 0
@@ -273,6 +274,36 @@ def rotate_image(image, angle, scale):
   result = cv2.warpAffine(image, rot_mat, image.shape[1::-1], flags=cv2.INTER_LINEAR)
   return result
 
+def rod(segments, displacement):
+    res = [0.0, 0.0]
+    for i in range(segments-1):
+        next = list()
+        for j in range(len(res)-1):
+            avg = (res[j]+res[j+1])/2.0
+            disp = (rnd.uniform(0, 1)-0.5)*displacement
+            next.append(res[j])
+            next.append(avg+disp)
+        next.append(res[-1])
+        res = next
+        displacement = displacement * 0.6
+    return res
+def lightning(image, center, dist, count=20, segments=5, displacement=10):
+    for l in range(count):
+        a = 3.14159*2.0 * l / count
+        r = rod(segments, displacement)
+        for i in range(len(r)-1):
+            sx0 = dist * i / len(r)
+            sx1 = dist * (i+1) / len(r)
+            sy0 = r[i]
+            sy1 = r[i+1]
+            x0 = center[0] + sx0 * math.cos(a) - sy0 * math.sin(a)
+            x1 = center[0] + sx1 * math.cos(a) - sy1 * math.sin(a)
+            y0 = center[1] + sx0 * math.sin(a) + sy0 * math.cos(a)
+            y1 = center[1] + sx1 * math.sin(a) + sy1 * math.cos(a)
+            cv2.line(image,
+                (int(x0), int(y0)), (int(x1), int(y1)),
+                (rnd.randint(235,255), rnd.randint(0, 15), rnd.randint(40, 60), 255),
+                1)
 def remap(image, point, distance):
     point = (int(point[0]), int(point[1]))
     hd = int(distance)
@@ -335,6 +366,13 @@ def augment(frame, landmarks):
         er2 = landmarks.part(46)
         color_eye(frame, el1, el2)
         color_eye(frame, er1, er2)
+    if display_lightning:
+        p1 = landmarks.part(37)
+        p2 = landmarks.part(40)
+        lightning(frame, ((p1.x+p2.x)/2, (p1.y+p2.y)/2), 100, 40, 5, 30)
+        p1 = landmarks.part(43)
+        p2 = landmarks.part(46)
+        lightning(frame, ((p1.x+p2.x)/2, (p1.y+p2.y)/2), 100, 40, 5, 30)
     if display_bigeye:
         p1 = landmarks.part(37)
         p2 = landmarks.part(40)
@@ -473,6 +511,8 @@ while True:
         display_hearts = not display_hearts
         if display_hearts:
             list(map(lambda x: x.clear(), effect_hearts.get_emitters()))
+    elif k == 108: # l
+        display_lightning = not display_lightning
     elif k == 98: # b
         display_eyebrowcolor = not display_eyebrowcolor
     elif k == 116: # t
