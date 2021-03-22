@@ -419,7 +419,13 @@ while True:
     # Background handling
     if replace_background:
         if background_mov is not None:
-            _, bg = background_mov.read()
+            ok, bg = background_mov.read()
+            if not ok: # Assume EOF
+                background_mov = cv2.VideoCapture(bg_movs[bg_movs_pos])
+                ok, bg = background_mov.read()
+                if not ok:
+                    background_mov = None
+                    bg = np.zeros_like(frame)
             bg = cv2.resize(bg, (width, height))
         else:
             bg = background
